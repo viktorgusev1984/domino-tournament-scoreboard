@@ -264,12 +264,11 @@ function App() {
       const tileIds = draftEntry?.tileIds ?? []
       const rawPoints = draftEntry?.points ?? ''
       const parsed = Number.parseInt(rawPoints, 10)
-      const hasManualPoints = rawPoints.length > 0 && !Number.isNaN(parsed)
       const manualPoints = Number.isNaN(parsed) ? 0 : Math.max(parsed, 0)
       const tilePoints = calculateTilePoints(tileIds)
-      const points = hasManualPoints ? manualPoints : tilePoints
+      const points = manualPoints + tilePoints
 
-      if (points > 0 || tileIds.length > 0) {
+      if (manualPoints > 0 || tilePoints > 0 || tileIds.length > 0) {
         hasData = true
       }
 
@@ -436,6 +435,9 @@ function App() {
                 .map((tileId) => DOMINO_TILE_MAP.get(tileId))
                 .filter((tile): tile is DominoTile => Boolean(tile))
               const tilePoints = calculateTilePoints(draftEntry?.tileIds ?? [])
+              const manualPoints = Number.parseInt(draftEntry?.points ?? '', 10)
+              const safeManualPoints = Number.isNaN(manualPoints) ? 0 : manualPoints
+              const totalRoundPoints = safeManualPoints + tilePoints
 
               return (
                 <div key={player.id} className="round-input">
@@ -493,7 +495,10 @@ function App() {
                         </button>
                       ) : null}
                     </div>
-                    <span className="tile-sum">Сумма по фишкам: {tilePoints}</span>
+                    <div className="round-points-summary">
+                      <span className="tile-sum">Очки за фишки: {tilePoints}</span>
+                      <span className="round-total-points">Итого за раунд: {totalRoundPoints}</span>
+                    </div>
                   </div>
                 </div>
               )
