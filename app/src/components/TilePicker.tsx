@@ -5,8 +5,8 @@ import { DominoTileGraphic } from './DominoTileGraphic'
 interface TilePickerProps {
   open: boolean
   onClose: () => void
-  onSelect: (tile: DominoTile) => void
-  selectedTileId?: string
+  onSelect: (tiles: DominoTile[]) => void
+  selectedTileIds?: string[]
   playerName?: string
 }
 
@@ -14,16 +14,18 @@ export const TilePicker: FC<TilePickerProps> = ({
   open,
   onClose,
   onSelect,
-  selectedTileId,
+  selectedTileIds,
   playerName,
 }) => {
   const [query, setQuery] = useState('')
+  const [selection, setSelection] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (open) {
       setQuery('')
+      setSelection(new Set(selectedTileIds ?? []))
     }
-  }, [open])
+  }, [open, selectedTileIds])
 
   useEffect(() => {
     if (!open) return
@@ -54,12 +56,38 @@ export const TilePicker: FC<TilePickerProps> = ({
     return null
   }
 
+  const toggleTile = (tileId: string) => {
+    setSelection((prev) => {
+      const next = new Set(prev)
+      if (next.has(tileId)) {
+        next.delete(tileId)
+      } else {
+        next.add(tileId)
+      }
+      return next
+    })
+  }
+
+  const handleConfirm = () => {
+    const tiles = Array.from(selection)
+      .map((tileId) => DOMINO_TILES.find((tile) => tile.id === tileId))
+      .filter((tile): tile is DominoTile => Boolean(tile))
+    onSelect(tiles)
+    onClose()
+  }
+
+  const handleClearSelection = () => {
+    setSelection(new Set())
+  }
+
+  const selectedCount = selection.size
+
   return (
     <div className="tile-picker-backdrop" role="dialog" aria-modal="true">
       <div className="tile-picker">
         <div className="tile-picker-header">
           <h2>
-            Выбор фишки {playerName ? <span className="tile-picker-player">для {playerName}</span> : null}
+            Выбор фишек {playerName ? <span className="tile-picker-player">для {playerName}</span> : null}
           </h2>
           <button
             type="button"
@@ -82,7 +110,7 @@ export const TilePicker: FC<TilePickerProps> = ({
             <p className="tile-picker-empty">Фишки не найдены</p>
           ) : (
             filteredTiles.map((tile) => {
-              const isActive = tile.id === selectedTileId
+              const isActive = selection.has(tile.id)
 
               return (
                 <button
@@ -91,8 +119,7 @@ export const TilePicker: FC<TilePickerProps> = ({
                   role="listitem"
                   className={`tile-picker-item ${isActive ? 'tile-picker-item-active' : ''}`}
                   onClick={() => {
-                    onSelect(tile)
-                    onClose()
+                    toggleTile(tile.id)
                   }}
                 >
                   <DominoTileGraphic left={tile.left} right={tile.right} size={64} />
@@ -101,6 +128,26 @@ export const TilePicker: FC<TilePickerProps> = ({
               )
             })
           )}
+        </div>
+        <div className="tile-picker-actions">
+          <span className="tile-picker-count">Выбрано: {selectedCount}</span>
+          <div className="tile-picker-buttons">
+            <button
+              type="button"
+              className="tile-picker-action-clear"
+              onClick={handleClearSelection}
+              disabled={selectedCount === 0}
+            >
+              Очистить
+            </button>
+            <button
+              type="button"
+              className="tile-picker-action-confirm"
+              onClick={handleConfirm}
+            >
+              Готово
+            </button>
+          </div>
         </div>
       </div>
     </div>
