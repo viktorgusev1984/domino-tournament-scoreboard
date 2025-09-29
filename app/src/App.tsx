@@ -416,7 +416,8 @@ function App() {
                 .map((tileId) => DOMINO_TILE_MAP.get(tileId))
                 .filter((tile): tile is DominoTile => Boolean(tile))
               const tilePoints = calculateTilePoints(draftEntry?.tileIds ?? [])
-              const totalRoundPoints = tilePoints
+              const previousTotal = totals[player.id] ?? 0
+              const totalRoundPoints = previousTotal + tilePoints
 
               return (
                 <div key={player.id} className="round-input">
@@ -466,7 +467,9 @@ function App() {
                     </div>
                     <div className="round-points-summary">
                       <span className="tile-sum">Очки за фишки: {tilePoints}</span>
-                      <span className="round-total-points">Итого за раунд: {totalRoundPoints}</span>
+                      <span className="round-total-points">
+                        Общий итог: {totalRoundPoints}
+                      </span>
                     </div>
                   </div>
                 </div>
