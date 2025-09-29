@@ -11,7 +11,7 @@ interface Player {
 
 interface RoundEntry {
   points: number
-  tileId?: string
+  tileIds?: string[]
 }
 
 interface Round {
@@ -20,7 +20,7 @@ interface Round {
   entries: Record<string, RoundEntry>
 }
 
-type RoundDraft = Record<string, { points: string; tileId?: string }>
+type RoundDraft = Record<string, { points: string; tileIds: string[] }>
 
 const LOSS_VIDEOS = [
   'https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0',
@@ -46,7 +46,7 @@ const buildRoundDraft = (players: Player[], previous?: RoundDraft): RoundDraft =
     const prevEntry = previous?.[player.id]
     accumulator[player.id] = {
       points: prevEntry?.points ?? '',
-      tileId: prevEntry?.tileId,
+      tileIds: prevEntry?.tileIds ?? [],
     }
     return accumulator
   }, {})
@@ -154,7 +154,9 @@ function App() {
 
         updatedPlayers.forEach((player) => {
           const existing = round.entries[player.id]
-          entries[player.id] = existing ?? { points: 0 }
+          entries[player.id] = existing
+            ? { points: existing.points, tileIds: existing.tileIds ?? [] }
+            : { points: 0, tileIds: [] }
         })
 
         return { ...round, entries }
@@ -168,35 +170,46 @@ function App() {
 
   const handleDraftPointsChange = (playerId: string, value: string) => {
     const sanitized = value.replace(/[^0-9]/g, '')
-    setRoundDraft((prev) => ({
-      ...prev,
-      [playerId]: {
-        ...prev[playerId],
-        points: sanitized,
-      },
-    }))
+    setRoundDraft((prev) => {
+      const previousEntry = prev[playerId] ?? { points: '', tileIds: [] }
+      return {
+        ...prev,
+        [playerId]: {
+          ...previousEntry,
+          points: sanitized,
+        },
+      }
+    })
     setRoundError(null)
   }
 
-  const handleTileSelect = (playerId: string, tile: DominoTile) => {
-    setRoundDraft((prev) => ({
-      ...prev,
-      [playerId]: {
-        ...prev[playerId],
-        tileId: tile.id,
-      },
-    }))
+  const handleTilesSelect = (playerId: string, tiles: DominoTile[]) => {
+    const uniqueIds = Array.from(new Set(tiles.map((tile) => tile.id)))
+
+    setRoundDraft((prev) => {
+      const previousEntry = prev[playerId] ?? { points: '', tileIds: [] }
+      return {
+        ...prev,
+        [playerId]: {
+          ...previousEntry,
+          tileIds: uniqueIds,
+        },
+      }
+    })
     setRoundError(null)
   }
 
   const handleClearTile = (playerId: string) => {
-    setRoundDraft((prev) => ({
-      ...prev,
-      [playerId]: {
-        ...prev[playerId],
-        tileId: undefined,
-      },
-    }))
+    setRoundDraft((prev) => {
+      const previousEntry = prev[playerId] ?? { points: '', tileIds: [] }
+      return {
+        ...prev,
+        [playerId]: {
+          ...previousEntry,
+          tileIds: [],
+        },
+      }
+    })
   }
 
   const handleAddRound = () => {
@@ -212,13 +225,13 @@ function App() {
       const parsed = Number.parseInt(draftEntry?.points ?? '', 10)
       const points = Number.isNaN(parsed) ? 0 : Math.max(parsed, 0)
 
-      if (points > 0 || draftEntry?.tileId) {
+      if (points > 0 || (draftEntry?.tileIds?.length ?? 0) > 0) {
         hasData = true
       }
 
       entries[player.id] = {
         points,
-        tileId: draftEntry?.tileId,
+        tileIds: [...(draftEntry?.tileIds ?? [])],
       }
     })
 
@@ -327,9 +340,9 @@ function App() {
         <div className="round-input-grid">
           {players.map((player) => {
             const draftEntry = roundDraft[player.id]
-            const selectedTile = draftEntry?.tileId
-              ? DOMINO_TILE_MAP.get(draftEntry.tileId)
-              : undefined
+            const selectedTiles = (draftEntry?.tileIds ?? [])
+              .map((tileId) => DOMINO_TILE_MAP.get(tileId))
+              .filter((tile): tile is DominoTile => Boolean(tile))
 
             return (
               <div key={player.id} className="round-input">
@@ -354,25 +367,34 @@ function App() {
                         setRoundError(null)
                       }}
                     >
-                      {selectedTile ? (
+                      {selectedTiles.length > 0 ? (
                         <>
-                          <DominoTileGraphic
-                            left={selectedTile.left}
-                            right={selectedTile.right}
-                            size={56}
-                          />
-                          <span>{selectedTile.label}</span>
+                          <div className="tile-selector-preview">
+                            {selectedTiles.slice(0, 3).map((tile) => (
+                              <DominoTileGraphic
+                                key={tile.id}
+                                left={tile.left}
+                                right={tile.right}
+                                size={48}
+                              />
+                            ))}
+                          </div>
+                          <span>
+                            {selectedTiles.length === 1
+                              ? selectedTiles[0].label
+                              : `Выбрано: ${selectedTiles.length}`}
+                          </span>
                         </>
                       ) : (
-                        <span>Выбрать фишку</span>
+                        <span>Выбрать фишки</span>
                       )}
                     </button>
-                    {selectedTile ? (
+                    {selectedTiles.length > 0 ? (
                       <button
                         type="button"
                         className="tile-clear"
                         onClick={() => handleClearTile(player.id)}
-                        aria-label={`Очистить фишку игрока ${player.name}`}
+                        aria-label={`Очистить фишки игрока ${player.name}`}
                       >
                         ×
                       </button>
@@ -417,22 +439,26 @@ function App() {
                     <th scope="row">#{round.index}</th>
                     {players.map((player) => {
                       const entry = round.entries[player.id]
-                      const tile = entry?.tileId
-                        ? DOMINO_TILE_MAP.get(entry.tileId)
-                        : undefined
+                      const tiles = (entry?.tileIds ?? [])
+                        .map((tileId) => DOMINO_TILE_MAP.get(tileId))
+                        .filter((tile): tile is DominoTile => Boolean(tile))
 
                       return (
                         <td key={player.id}>
                           <div className="round-cell">
                             <span className="round-points">+{entry?.points ?? 0}</span>
-                            {tile ? (
-                              <div className="round-cell-tile">
-                                <DominoTileGraphic
-                                  left={tile.left}
-                                  right={tile.right}
-                                  size={48}
-                                />
-                                <span>{tile.label}</span>
+                            {tiles.length > 0 ? (
+                              <div className="round-cell-tiles">
+                                {tiles.map((tile) => (
+                                  <div key={tile.id} className="round-cell-tile">
+                                    <DominoTileGraphic
+                                      left={tile.left}
+                                      right={tile.right}
+                                      size={48}
+                                    />
+                                    <span>{tile.label}</span>
+                                  </div>
+                                ))}
                               </div>
                             ) : (
                               <span className="round-cell-placeholder">—</span>
@@ -489,12 +515,12 @@ function App() {
       <TilePicker
         open={Boolean(activePicker)}
         onClose={() => setActivePicker(null)}
-        onSelect={(tile) => {
+        onSelect={(tiles) => {
           if (activePicker) {
-            handleTileSelect(activePicker, tile)
+            handleTilesSelect(activePicker, tiles)
           }
         }}
-        selectedTileId={activePicker ? roundDraft[activePicker]?.tileId : undefined}
+        selectedTileIds={activePicker ? roundDraft[activePicker]?.tileIds ?? [] : []}
         playerName={activePickerPlayer?.name}
       />
     </div>
