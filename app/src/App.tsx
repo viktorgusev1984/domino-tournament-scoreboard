@@ -289,6 +289,24 @@ function App() {
   const activePickerPlayer = activePicker
     ? players.find((player) => player.id === activePicker)
     : undefined
+  const activePickerExcludedTileIds = useMemo(() => {
+    if (!activePicker) {
+      return []
+    }
+
+    const excluded = new Set<string>()
+
+    players.forEach((player) => {
+      if (player.id === activePicker) {
+        return
+      }
+
+      const tileIds = roundDraft[player.id]?.tileIds ?? []
+      tileIds.forEach((tileId) => excluded.add(tileId))
+    })
+
+    return Array.from(excluded)
+  }, [activePicker, players, roundDraft])
 
   const handlePreviousStep = () => {
     setCurrentStep((prev) => Math.max(1, prev - 1))
@@ -739,6 +757,7 @@ function App() {
         }}
         selectedTileIds={activePicker ? roundDraft[activePicker]?.tileIds ?? [] : []}
         playerName={activePickerPlayer?.name}
+        excludedTileIds={activePickerExcludedTileIds}
       />
     </div>
   )

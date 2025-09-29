@@ -8,6 +8,7 @@ interface TilePickerProps {
   onSelect: (tiles: DominoTile[]) => void
   selectedTileIds?: string[]
   playerName?: string
+  excludedTileIds?: string[]
 }
 
 export const TilePicker: FC<TilePickerProps> = ({
@@ -16,9 +17,21 @@ export const TilePicker: FC<TilePickerProps> = ({
   onSelect,
   selectedTileIds,
   playerName,
+  excludedTileIds,
 }) => {
   const [query, setQuery] = useState('')
   const [selection, setSelection] = useState<Set<string>>(new Set())
+  const preservedSelection = useMemo(
+    () => new Set(selectedTileIds ?? []),
+    [selectedTileIds],
+  )
+  const excludedTilesSet = useMemo(() => {
+    if (!excludedTileIds || excludedTileIds.length === 0) {
+      return new Set<string>()
+    }
+
+    return new Set(excludedTileIds.filter((tileId) => !preservedSelection.has(tileId)))
+  }, [excludedTileIds, preservedSelection])
 
   useEffect(() => {
     if (open) {
@@ -43,20 +56,28 @@ export const TilePicker: FC<TilePickerProps> = ({
   const filteredTiles = useMemo(() => {
     const normalized = query.trim().toLowerCase()
 
-    if (!normalized) {
-      return DOMINO_TILES
+    const bySearch = !normalized
+      ? DOMINO_TILES
+      : DOMINO_TILES.filter((tile) =>
+          tile.keywords.some((keyword) => keyword.includes(normalized)),
+        )
+
+    if (excludedTilesSet.size === 0) {
+      return bySearch
     }
 
-    return DOMINO_TILES.filter((tile) =>
-      tile.keywords.some((keyword) => keyword.includes(normalized)),
-    )
-  }, [query])
+    return bySearch.filter((tile) => !excludedTilesSet.has(tile.id))
+  }, [excludedTilesSet, query])
 
   if (!open) {
     return null
   }
 
   const toggleTile = (tileId: string) => {
+    if (excludedTilesSet.has(tileId) && !selection.has(tileId)) {
+      return
+    }
+
     setSelection((prev) => {
       const next = new Set(prev)
       if (next.has(tileId)) {
