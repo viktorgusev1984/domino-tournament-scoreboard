@@ -51,6 +51,17 @@ const buildRoundDraft = (players: Player[], previous?: RoundDraft): RoundDraft =
     return accumulator
   }, {})
 
+const calculateTilePoints = (tileIds: string[]): number =>
+  tileIds.reduce((sum, tileId) => {
+    const tile = DOMINO_TILE_MAP.get(tileId)
+
+    if (!tile) {
+      return sum
+    }
+
+    return sum + tile.left + tile.right
+  }, 0)
+
 const adjustPlayers = (current: Player[], desiredCount: number): Player[] => {
   if (desiredCount === current.length) {
     return current
@@ -222,16 +233,21 @@ function App() {
 
     players.forEach((player) => {
       const draftEntry = roundDraft[player.id]
-      const parsed = Number.parseInt(draftEntry?.points ?? '', 10)
-      const points = Number.isNaN(parsed) ? 0 : Math.max(parsed, 0)
+      const tileIds = draftEntry?.tileIds ?? []
+      const rawPoints = draftEntry?.points ?? ''
+      const parsed = Number.parseInt(rawPoints, 10)
+      const hasManualPoints = rawPoints.length > 0 && !Number.isNaN(parsed)
+      const manualPoints = Number.isNaN(parsed) ? 0 : Math.max(parsed, 0)
+      const tilePoints = calculateTilePoints(tileIds)
+      const points = hasManualPoints ? manualPoints : tilePoints
 
-      if (points > 0 || (draftEntry?.tileIds?.length ?? 0) > 0) {
+      if (points > 0 || tileIds.length > 0) {
         hasData = true
       }
 
       entries[player.id] = {
         points,
-        tileIds: [...(draftEntry?.tileIds ?? [])],
+        tileIds: [...tileIds],
       }
     })
 
