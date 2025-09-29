@@ -308,50 +308,6 @@ function App() {
     return Array.from(excluded)
   }, [activePicker, players, roundDraft])
 
-  const handlePreviousStep = () => {
-    setCurrentStep((prev) => Math.max(1, prev - 1))
-  }
-
-  const handleNextStep = () => {
-    const totalSteps = WIZARD_STEPS.length
-
-    const canProceed = (() => {
-      if (currentStep === 1) {
-        return true
-      }
-
-      if (currentStep === 2) {
-        return canAccessProgressStep
-      }
-
-      if (currentStep === 3) {
-        return canAccessResultsStep
-      }
-
-      return false
-    })()
-
-    if (currentStep < totalSteps && canProceed) {
-      setCurrentStep((prev) => prev + 1)
-    }
-  }
-
-  const isNextDisabled = (() => {
-    if (currentStep === 1) {
-      return false
-    }
-
-    if (currentStep === 2) {
-      return !canAccessProgressStep
-    }
-
-    if (currentStep === 3) {
-      return !canAccessResultsStep
-    }
-
-    return true
-  })()
-
   const renderStepContent = () => {
     if (currentStep === 1) {
       return (
@@ -726,26 +682,6 @@ function App() {
       </nav>
 
       <div className="wizard-content">{renderStepContent()}</div>
-
-      <div className="wizard-navigation">
-        <button
-          type="button"
-          className="secondary"
-          onClick={handlePreviousStep}
-          disabled={currentStep === 1}
-        >
-          Назад
-        </button>
-        {currentStep < WIZARD_STEPS.length ? (
-          <button type="button" className="primary" onClick={handleNextStep} disabled={isNextDisabled}>
-            Далее
-          </button>
-        ) : (
-          <button type="button" className="primary" onClick={() => setCurrentStep(1)}>
-            Начать заново
-          </button>
-        )}
-      </div>
 
       <TilePicker
         open={Boolean(activePicker)}
