@@ -20,7 +20,7 @@ interface Round {
   entries: Record<string, RoundEntry>
 }
 
-type RoundDraft = Record<string, { points: string; tileIds: string[] }>
+type RoundDraft = Record<string, { tileIds: string[] }>
 
 const LOSS_VIDEOS = [
   'https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0',
@@ -42,7 +42,7 @@ const WIZARD_STEPS = [
   {
     id: 2,
     title: 'Добавление раундов',
-    description: 'Вносите очки и учитывайте сумму по выбранным фишкам домино.',
+    description: 'Выбирайте сыгранные фишки, очки посчитаются автоматически.',
   },
   {
     id: 3,
@@ -68,7 +68,6 @@ const buildRoundDraft = (players: Player[], previous?: RoundDraft): RoundDraft =
   players.reduce<RoundDraft>((accumulator, player) => {
     const prevEntry = previous?.[player.id]
     accumulator[player.id] = {
-      points: prevEntry?.points ?? '',
       tileIds: prevEntry?.tileIds ?? [],
     }
     return accumulator
@@ -207,26 +206,11 @@ function App() {
     setPlayers((prev) => prev.map((player) => (player.id === id ? { ...player, name } : player)))
   }
 
-  const handleDraftPointsChange = (playerId: string, value: string) => {
-    const sanitized = value.replace(/[^0-9]/g, '')
-    setRoundDraft((prev) => {
-      const previousEntry = prev[playerId] ?? { points: '', tileIds: [] }
-      return {
-        ...prev,
-        [playerId]: {
-          ...previousEntry,
-          points: sanitized,
-        },
-      }
-    })
-    setRoundError(null)
-  }
-
   const handleTilesSelect = (playerId: string, tiles: DominoTile[]) => {
     const uniqueIds = Array.from(new Set(tiles.map((tile) => tile.id)))
 
     setRoundDraft((prev) => {
-      const previousEntry = prev[playerId] ?? { points: '', tileIds: [] }
+      const previousEntry = prev[playerId] ?? { tileIds: [] }
       return {
         ...prev,
         [playerId]: {
@@ -240,7 +224,7 @@ function App() {
 
   const handleClearTile = (playerId: string) => {
     setRoundDraft((prev) => {
-      const previousEntry = prev[playerId] ?? { points: '', tileIds: [] }
+      const previousEntry = prev[playerId] ?? { tileIds: [] }
       return {
         ...prev,
         [playerId]: {
@@ -262,13 +246,10 @@ function App() {
     players.forEach((player) => {
       const draftEntry = roundDraft[player.id]
       const tileIds = draftEntry?.tileIds ?? []
-      const rawPoints = draftEntry?.points ?? ''
-      const parsed = Number.parseInt(rawPoints, 10)
-      const manualPoints = Number.isNaN(parsed) ? 0 : Math.max(parsed, 0)
       const tilePoints = calculateTilePoints(tileIds)
-      const points = manualPoints + tilePoints
+      const points = tilePoints
 
-      if (manualPoints > 0 || tilePoints > 0 || tileIds.length > 0) {
+      if (tilePoints > 0 || tileIds.length > 0) {
         hasData = true
       }
 
@@ -279,7 +260,7 @@ function App() {
     })
 
     if (!hasData) {
-      setRoundError('Добавьте очки или выберите фишки хотя бы для одного игрока.')
+      setRoundError('Выберите фишки хотя бы для одного игрока.')
       return
     }
 
@@ -426,7 +407,7 @@ function App() {
         <section className="round-form">
           <div className="section-header">
             <h2>Добавить раунд #{rounds.length + 1}</h2>
-            <span className="section-subtitle">Введите очки и выберите сыгранные фишки</span>
+            <span className="section-subtitle">Выберите сыгранные фишки для каждого игрока</span>
           </div>
           <div className="round-input-grid">
             {players.map((player) => {
@@ -435,24 +416,12 @@ function App() {
                 .map((tileId) => DOMINO_TILE_MAP.get(tileId))
                 .filter((tile): tile is DominoTile => Boolean(tile))
               const tilePoints = calculateTilePoints(draftEntry?.tileIds ?? [])
-              const manualPoints = Number.parseInt(draftEntry?.points ?? '', 10)
-              const safeManualPoints = Number.isNaN(manualPoints) ? 0 : manualPoints
-              const totalRoundPoints = safeManualPoints + tilePoints
+              const totalRoundPoints = tilePoints
 
               return (
                 <div key={player.id} className="round-input">
                   <h3>{player.name}</h3>
                   <div className="round-input-controls">
-                    <label className="round-label">
-                      Очки
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        value={draftEntry?.points ?? ''}
-                        onChange={(event) => handleDraftPointsChange(player.id, event.target.value)}
-                      />
-                    </label>
                     <div className="tile-selector">
                       <button
                         type="button"
