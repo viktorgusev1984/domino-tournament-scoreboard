@@ -236,6 +236,10 @@ function App() {
   }
 
   const handleAddRound = () => {
+    if (isTournamentFinished) {
+      return
+    }
+
     if (players.length === 0) {
       return
     }
@@ -451,9 +455,19 @@ function App() {
             })}
           </div>
           {roundError ? <p className="round-error">{roundError}</p> : null}
-          <button type="button" className="primary" onClick={handleAddRound}>
-            Сохранить раунд
-          </button>
+          {isTournamentFinished ? (
+            <button
+              type="button"
+              className="primary"
+              onClick={() => setCurrentStep(4)}
+            >
+              Перейти к результатам
+            </button>
+          ) : (
+            <button type="button" className="primary" onClick={handleAddRound}>
+              Сохранить раунд
+            </button>
+          )}
         </section>
       )
     }
