@@ -33,6 +33,29 @@ const MAX_PLAYERS = 8
 const DEFAULT_PLAYERS = 4
 const DEFAULT_TARGET = 100
 
+const WIZARD_STEPS = [
+  {
+    id: 1,
+    title: 'Настройка турнира',
+    description: 'Определите количество игроков, их имена и порог проигрыша.',
+  },
+  {
+    id: 2,
+    title: 'Добавление раундов',
+    description: 'Вносите очки и учитывайте сумму по выбранным фишкам домино.',
+  },
+  {
+    id: 3,
+    title: 'Прогресс турнира',
+    description: 'Отслеживайте, сколько очков осталось игрокам до завершения.',
+  },
+  {
+    id: 4,
+    title: 'Итоговая таблица',
+    description: 'Просмотрите детальную сводку по всем раундам и победителям.',
+  },
+]
+
 const createPlayer = (index: number): Player => ({
   id: `player-${index}`,
   name: `Игрок ${index}`,
@@ -103,6 +126,7 @@ function App() {
   const [roundError, setRoundError] = useState<string | null>(null)
   const [activePicker, setActivePicker] = useState<string | null>(null)
   const [lossVideoUrl, setLossVideoUrl] = useState<string | null>(null)
+  const [currentStep, setCurrentStep] = useState<number>(1)
 
   useEffect(() => {
     setRoundDraft((prev) => buildRoundDraft(players, prev))
@@ -136,6 +160,10 @@ function App() {
   )
 
   const loserKey = losingPlayers.map((player) => player.id).join('|')
+
+  const isTournamentFinished = losingPlayers.length > 0
+  const canAccessProgressStep = rounds.length > 0
+  const canAccessResultsStep = isTournamentFinished
 
   useEffect(() => {
     if (!loserKey) {
@@ -265,6 +293,9 @@ function App() {
     setRounds((prev) => [...prev, newRound])
     setRoundDraft(buildRoundDraft(players))
     setRoundError(null)
+    if (!canAccessProgressStep) {
+      setCurrentStep((prev) => Math.max(prev, 2))
+    }
   }
 
   const handleReset = () => {
@@ -272,11 +303,374 @@ function App() {
     setRoundDraft(buildRoundDraft(players))
     setLossVideoUrl(null)
     setRoundError(null)
+    setCurrentStep(1)
   }
 
   const activePickerPlayer = activePicker
     ? players.find((player) => player.id === activePicker)
     : undefined
+
+  const handlePreviousStep = () => {
+    setCurrentStep((prev) => Math.max(1, prev - 1))
+  }
+
+  const handleNextStep = () => {
+    const totalSteps = WIZARD_STEPS.length
+
+    const canProceed = (() => {
+      if (currentStep === 1) {
+        return true
+      }
+
+      if (currentStep === 2) {
+        return canAccessProgressStep
+      }
+
+      if (currentStep === 3) {
+        return canAccessResultsStep
+      }
+
+      return false
+    })()
+
+    if (currentStep < totalSteps && canProceed) {
+      setCurrentStep((prev) => prev + 1)
+    }
+  }
+
+  const isNextDisabled = (() => {
+    if (currentStep === 1) {
+      return false
+    }
+
+    if (currentStep === 2) {
+      return !canAccessProgressStep
+    }
+
+    if (currentStep === 3) {
+      return !canAccessResultsStep
+    }
+
+    return true
+  })()
+
+  const renderStepContent = () => {
+    if (currentStep === 1) {
+      return (
+        <>
+          <section className="control-panel">
+            <div className="control">
+              <label htmlFor="player-count">Количество игроков</label>
+              <input
+                id="player-count"
+                type="number"
+                min={MIN_PLAYERS}
+                max={MAX_PLAYERS}
+                value={players.length}
+                onChange={(event) =>
+                  handlePlayerCountChange(Number.parseInt(event.target.value, 10))
+                }
+              />
+              <span className="control-hint">от {MIN_PLAYERS} до {MAX_PLAYERS}</span>
+            </div>
+            <div className="control">
+              <label htmlFor="target-score">Порог проигрыша (очки)</label>
+              <input
+                id="target-score"
+                type="number"
+                min={1}
+                value={targetScore}
+                onChange={(event) =>
+                  setTargetScore(Math.max(1, Number.parseInt(event.target.value, 10) || 0))
+                }
+              />
+            </div>
+            <button type="button" className="secondary" onClick={handleReset}>
+              Сбросить результаты
+            </button>
+          </section>
+
+          <section className="players">
+            <div className="section-header">
+              <h2>Игроки</h2>
+              <span className="section-subtitle">
+                Нажмите на имя, чтобы переименовать участника
+              </span>
+            </div>
+            <div className="player-grid">
+              {players.map((player, index) => {
+                const total = totals[player.id] ?? 0
+                const isLoser = losingPlayers.some((loser) => loser.id === player.id)
+
+                return (
+                  <div key={player.id} className={`player-card ${isLoser ? 'player-card-loser' : ''}`}>
+                    <span className="player-index">#{index + 1}</span>
+                    <input
+                      type="text"
+                      className="player-name"
+                      value={player.name}
+                      onChange={(event) => handlePlayerNameChange(player.id, event.target.value)}
+                      maxLength={24}
+                    />
+                    <span className="player-total">Итого: {total}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        </>
+      )
+    }
+
+    if (currentStep === 2) {
+      return (
+        <section className="round-form">
+          <div className="section-header">
+            <h2>Добавить раунд #{rounds.length + 1}</h2>
+            <span className="section-subtitle">Введите очки и выберите сыгранные фишки</span>
+          </div>
+          <div className="round-input-grid">
+            {players.map((player) => {
+              const draftEntry = roundDraft[player.id]
+              const selectedTiles = (draftEntry?.tileIds ?? [])
+                .map((tileId) => DOMINO_TILE_MAP.get(tileId))
+                .filter((tile): tile is DominoTile => Boolean(tile))
+              const tilePoints = calculateTilePoints(draftEntry?.tileIds ?? [])
+
+              return (
+                <div key={player.id} className="round-input">
+                  <h3>{player.name}</h3>
+                  <div className="round-input-controls">
+                    <label className="round-label">
+                      Очки
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={draftEntry?.points ?? ''}
+                        onChange={(event) => handleDraftPointsChange(player.id, event.target.value)}
+                      />
+                    </label>
+                    <div className="tile-selector">
+                      <button
+                        type="button"
+                        className="tile-selector-trigger"
+                        onClick={() => {
+                          setActivePicker(player.id)
+                          setRoundError(null)
+                        }}
+                      >
+                        {selectedTiles.length > 0 ? (
+                          <>
+                            <div className="tile-selector-preview">
+                              {selectedTiles.slice(0, 3).map((tile) => (
+                                <DominoTileGraphic
+                                  key={tile.id}
+                                  left={tile.left}
+                                  right={tile.right}
+                                  size={48}
+                                />
+                              ))}
+                            </div>
+                            <span>
+                              {selectedTiles.length === 1
+                                ? selectedTiles[0].label
+                                : `Выбрано: ${selectedTiles.length}`}
+                            </span>
+                          </>
+                        ) : (
+                          <span>Выбрать фишки</span>
+                        )}
+                      </button>
+                      {selectedTiles.length > 0 ? (
+                        <button
+                          type="button"
+                          className="tile-clear"
+                          onClick={() => handleClearTile(player.id)}
+                          aria-label={`Очистить фишки игрока ${player.name}`}
+                        >
+                          ×
+                        </button>
+                      ) : null}
+                    </div>
+                    <span className="tile-sum">Сумма по фишкам: {tilePoints}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {roundError ? <p className="round-error">{roundError}</p> : null}
+          <button type="button" className="primary" onClick={handleAddRound}>
+            Сохранить раунд
+          </button>
+        </section>
+      )
+    }
+
+    if (currentStep === 3) {
+      return (
+        <section className="tournament-progress">
+          <div className="section-header">
+            <h2>Прогресс турнира</h2>
+            <span className="section-subtitle">
+              Посмотрите, сколько очков осталось игрокам до порога проигрыша
+            </span>
+          </div>
+          {rounds.length === 0 ? (
+            <p className="empty-state">
+              Для отображения прогресса сначала сохраните хотя бы один раунд на предыдущем шаге.
+            </p>
+          ) : (
+            <div className="progress-grid">
+              {players.map((player) => {
+                const total = totals[player.id] ?? 0
+                const remaining = Math.max(targetScore - total, 0)
+                const progress = Math.min((total / targetScore) * 100, 100)
+                const isLoser = losingPlayers.some((loser) => loser.id === player.id)
+
+                return (
+                  <div key={player.id} className={`progress-card ${isLoser ? 'progress-card-finished' : ''}`}>
+                    <div className="progress-card-header">
+                      <span className="progress-player-name">{player.name}</span>
+                      <span className="progress-total">{total} очков</span>
+                    </div>
+                    <div className="progress-bar" role="progressbar" aria-valuenow={Math.round(progress)}>
+                      <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
+                    </div>
+                    <div className="progress-details">
+                      {isLoser ? (
+                        <span>Игрок достиг порога проигрыша.</span>
+                      ) : (
+                        <span>До порога осталось: {remaining}</span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          <div className="progress-footnote">
+            {isTournamentFinished ? (
+              <span>
+                Турнир завершён — победитель определяется на следующем шаге.
+              </span>
+            ) : (
+              <span>
+                Продолжайте добавлять раунды, пока хотя бы один игрок не достигнет порога проигрыша.
+              </span>
+            )}
+          </div>
+        </section>
+      )
+    }
+
+    return (
+      <>
+        <section className="rounds">
+          <div className="section-header">
+            <h2>История раундов</h2>
+            <span className="section-subtitle">
+              Отслеживайте очки и сыгранные фишки по каждому раунду
+            </span>
+          </div>
+          {rounds.length === 0 ? (
+            <p className="empty-state">
+              Раунды ещё не добавлены. Заполните форму на шаге «Добавление раундов» и сохраните.
+            </p>
+          ) : (
+            <div className="round-table-wrapper">
+              <table className="round-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Раунд</th>
+                    {players.map((player) => (
+                      <th key={player.id} scope="col">
+                        {player.name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rounds.map((round) => (
+                    <tr key={round.id}>
+                      <th scope="row">#{round.index}</th>
+                      {players.map((player) => {
+                        const entry = round.entries[player.id]
+                        const tiles = (entry?.tileIds ?? [])
+                          .map((tileId) => DOMINO_TILE_MAP.get(tileId))
+                          .filter((tile): tile is DominoTile => Boolean(tile))
+
+                        return (
+                          <td key={player.id}>
+                            <div className="round-cell">
+                              <span className="round-points">+{entry?.points ?? 0}</span>
+                              {tiles.length > 0 ? (
+                                <div className="round-cell-tiles">
+                                  {tiles.map((tile) => (
+                                    <div key={tile.id} className="round-cell-tile">
+                                      <DominoTileGraphic
+                                        left={tile.left}
+                                        right={tile.right}
+                                        size={48}
+                                      />
+                                      <span>{tile.label}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="round-cell-placeholder">—</span>
+                              )}
+                            </div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <th scope="row">Итого</th>
+                    {players.map((player) => {
+                      const total = totals[player.id] ?? 0
+                      const isLoser = losingPlayers.some((loser) => loser.id === player.id)
+
+                      return (
+                        <td
+                          key={player.id}
+                          className={`round-total ${isLoser ? 'round-total-loser' : ''}`}
+                        >
+                          {total}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {losingPlayers.length > 0 && lossVideoUrl ? (
+          <section className="loser-video">
+            <div className="section-header">
+              <h2>Проигравший: {losingPlayers[0].name}</h2>
+              <span className="section-subtitle">
+                Порог проигрыша: {targetScore} очков. Видео можно поменять, добавив новый раунд.
+              </span>
+            </div>
+            <div className="video-wrapper">
+              <iframe
+                title="Видео поражения"
+                src={lossVideoUrl}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          </section>
+        ) : null}
+      </>
+    )
+  }
 
   return (
     <div className="app">
@@ -287,246 +681,76 @@ function App() {
           проигрыша, появится случайное видео с поражением.
         </p>
       </header>
+      <nav className="wizard-steps" aria-label="Шаги мастера настройки">
+        {WIZARD_STEPS.map((step) => {
+          const isActive = currentStep === step.id
+          const isCompleted = currentStep > step.id
 
-      <section className="control-panel">
-        <div className="control">
-          <label htmlFor="player-count">Количество игроков</label>
-          <input
-            id="player-count"
-            type="number"
-            min={MIN_PLAYERS}
-            max={MAX_PLAYERS}
-            value={players.length}
-            onChange={(event) => handlePlayerCountChange(Number.parseInt(event.target.value, 10))}
-          />
-          <span className="control-hint">
-            от {MIN_PLAYERS} до {MAX_PLAYERS}
-          </span>
-        </div>
-        <div className="control">
-          <label htmlFor="target-score">Порог проигрыша (очки)</label>
-          <input
-            id="target-score"
-            type="number"
-            min={1}
-            value={targetScore}
-            onChange={(event) => setTargetScore(Math.max(1, Number.parseInt(event.target.value, 10) || 0))}
-          />
-        </div>
-        <button type="button" className="secondary" onClick={handleReset}>
-          Сбросить результаты
+          const isDisabled = (() => {
+            if (step.id < currentStep) {
+              return false
+            }
+
+            if (step.id === currentStep) {
+              return false
+            }
+
+            if (step.id === 3) {
+              return !canAccessProgressStep
+            }
+
+            if (step.id === 4) {
+              return !canAccessResultsStep
+            }
+
+            return false
+          })()
+
+          return (
+            <button
+              key={step.id}
+              type="button"
+              className={`wizard-step ${isActive ? 'wizard-step-active' : ''} ${
+                isCompleted ? 'wizard-step-completed' : ''
+              }`}
+              onClick={() => {
+                if (!isDisabled) {
+                  setCurrentStep(step.id)
+                }
+              }}
+              disabled={isDisabled}
+            >
+              <span className="wizard-step-index">{step.id}</span>
+              <span className="wizard-step-body">
+                <span className="wizard-step-title">{step.title}</span>
+                <span className="wizard-step-description">{step.description}</span>
+              </span>
+            </button>
+          )
+        })}
+      </nav>
+
+      <div className="wizard-content">{renderStepContent()}</div>
+
+      <div className="wizard-navigation">
+        <button
+          type="button"
+          className="secondary"
+          onClick={handlePreviousStep}
+          disabled={currentStep === 1}
+        >
+          Назад
         </button>
-      </section>
-
-      <section className="players">
-        <div className="section-header">
-          <h2>Игроки</h2>
-          <span className="section-subtitle">Нажмите на имя, чтобы переименовать участника</span>
-        </div>
-        <div className="player-grid">
-          {players.map((player, index) => {
-            const total = totals[player.id] ?? 0
-            const isLoser = losingPlayers.some((loser) => loser.id === player.id)
-
-            return (
-              <div
-                key={player.id}
-                className={`player-card ${isLoser ? 'player-card-loser' : ''}`}
-              >
-                <span className="player-index">#{index + 1}</span>
-                <input
-                  type="text"
-                  className="player-name"
-                  value={player.name}
-                  onChange={(event) => handlePlayerNameChange(player.id, event.target.value)}
-                  maxLength={24}
-                />
-                <span className="player-total">Итого: {total}</span>
-              </div>
-            )
-          })}
-        </div>
-      </section>
-
-      <section className="round-form">
-        <div className="section-header">
-          <h2>Добавить раунд #{rounds.length + 1}</h2>
-          <span className="section-subtitle">Введите очки и выберите сыгранные фишки</span>
-        </div>
-        <div className="round-input-grid">
-          {players.map((player) => {
-            const draftEntry = roundDraft[player.id]
-            const selectedTiles = (draftEntry?.tileIds ?? [])
-              .map((tileId) => DOMINO_TILE_MAP.get(tileId))
-              .filter((tile): tile is DominoTile => Boolean(tile))
-
-            return (
-              <div key={player.id} className="round-input">
-                <h3>{player.name}</h3>
-                <div className="round-input-controls">
-                  <label className="round-label">
-                    Очки
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      value={draftEntry?.points ?? ''}
-                      onChange={(event) => handleDraftPointsChange(player.id, event.target.value)}
-                    />
-                  </label>
-                  <div className="tile-selector">
-                    <button
-                      type="button"
-                      className="tile-selector-trigger"
-                      onClick={() => {
-                        setActivePicker(player.id)
-                        setRoundError(null)
-                      }}
-                    >
-                      {selectedTiles.length > 0 ? (
-                        <>
-                          <div className="tile-selector-preview">
-                            {selectedTiles.slice(0, 3).map((tile) => (
-                              <DominoTileGraphic
-                                key={tile.id}
-                                left={tile.left}
-                                right={tile.right}
-                                size={48}
-                              />
-                            ))}
-                          </div>
-                          <span>
-                            {selectedTiles.length === 1
-                              ? selectedTiles[0].label
-                              : `Выбрано: ${selectedTiles.length}`}
-                          </span>
-                        </>
-                      ) : (
-                        <span>Выбрать фишки</span>
-                      )}
-                    </button>
-                    {selectedTiles.length > 0 ? (
-                      <button
-                        type="button"
-                        className="tile-clear"
-                        onClick={() => handleClearTile(player.id)}
-                        aria-label={`Очистить фишки игрока ${player.name}`}
-                      >
-                        ×
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-        {roundError ? <p className="round-error">{roundError}</p> : null}
-        <button type="button" className="primary" onClick={handleAddRound}>
-          Сохранить раунд
-        </button>
-      </section>
-
-      <section className="rounds">
-        <div className="section-header">
-          <h2>История раундов</h2>
-          <span className="section-subtitle">
-            Отслеживайте очки и сыгранные фишки по каждому раунду
-          </span>
-        </div>
-        {rounds.length === 0 ? (
-          <p className="empty-state">Раунды ещё не добавлены. Заполните форму выше и сохраните.</p>
+        {currentStep < WIZARD_STEPS.length ? (
+          <button type="button" className="primary" onClick={handleNextStep} disabled={isNextDisabled}>
+            Далее
+          </button>
         ) : (
-          <div className="round-table-wrapper">
-            <table className="round-table">
-              <thead>
-                <tr>
-                  <th scope="col">Раунд</th>
-                  {players.map((player) => (
-                    <th key={player.id} scope="col">
-                      {player.name}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rounds.map((round) => (
-                  <tr key={round.id}>
-                    <th scope="row">#{round.index}</th>
-                    {players.map((player) => {
-                      const entry = round.entries[player.id]
-                      const tiles = (entry?.tileIds ?? [])
-                        .map((tileId) => DOMINO_TILE_MAP.get(tileId))
-                        .filter((tile): tile is DominoTile => Boolean(tile))
-
-                      return (
-                        <td key={player.id}>
-                          <div className="round-cell">
-                            <span className="round-points">+{entry?.points ?? 0}</span>
-                            {tiles.length > 0 ? (
-                              <div className="round-cell-tiles">
-                                {tiles.map((tile) => (
-                                  <div key={tile.id} className="round-cell-tile">
-                                    <DominoTileGraphic
-                                      left={tile.left}
-                                      right={tile.right}
-                                      size={48}
-                                    />
-                                    <span>{tile.label}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="round-cell-placeholder">—</span>
-                            )}
-                          </div>
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th scope="row">Итого</th>
-                  {players.map((player) => {
-                    const total = totals[player.id] ?? 0
-                    const isLoser = losingPlayers.some((loser) => loser.id === player.id)
-
-                    return (
-                      <td
-                        key={player.id}
-                        className={`round-total ${isLoser ? 'round-total-loser' : ''}`}
-                      >
-                        {total}
-                      </td>
-                    )
-                  })}
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+          <button type="button" className="primary" onClick={() => setCurrentStep(1)}>
+            Начать заново
+          </button>
         )}
-      </section>
-
-      {losingPlayers.length > 0 && lossVideoUrl ? (
-        <section className="loser-video">
-          <div className="section-header">
-            <h2>Проигравший: {losingPlayers[0].name}</h2>
-            <span className="section-subtitle">
-              Порог проигрыша: {targetScore} очков. Видео можно поменять, добавив новый раунд.
-            </span>
-          </div>
-          <div className="video-wrapper">
-            <iframe
-              title="Видео поражения"
-              src={lossVideoUrl}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
-        </section>
-      ) : null}
+      </div>
 
       <TilePicker
         open={Boolean(activePicker)}
